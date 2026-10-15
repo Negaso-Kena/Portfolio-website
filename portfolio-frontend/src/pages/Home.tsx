@@ -7,9 +7,13 @@ import { BlogCard } from "../components/shared/BlogCard";
 import { Loading } from "../components/ui/Loading";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Button } from "../components/ui/Button";
-import { resolveAssetUrl } from "../api/client";
+import {
+  resolveAssetUrl,
+  optimizeCloudinaryImage,
+} from "../api/client";
 import { SEO } from "../components/shared/SEO";
 import type { SiteSettings } from "../types";
+
 
 export function Home() {
   const { settings } = useOutletContext<{ settings: SiteSettings | null }>();
@@ -59,7 +63,7 @@ export function Home() {
                 <img
                   src={
                     settings?.avatarUrl
-                      ? resolveAssetUrl(settings.avatarUrl)
+                      ? optimizeCloudinaryImage(settings.avatarUrl, 400)
                       : "/your-photo.jpg"
                   }
                   alt="Negaso Kena"
