@@ -3,7 +3,7 @@ import { ExternalLink, Code2 } from "lucide-react";
 import type { Project } from "../../types";
 import { CornerFrame } from "../ui/CornerFrame";
 import { Tag } from "../ui/Tag";
-import { resolveAssetUrl } from "../../api/client";
+import { optimizeCloudinaryImage } from "../../api/client";
 
 export function ProjectCard({ project }: { project: Project }) {
   return (
@@ -12,7 +12,7 @@ export function ProjectCard({ project }: { project: Project }) {
         <div className="aspect-video overflow-hidden bg-navy-700">
           {project.imageUrl ? (
             <img
-              src={resolveAssetUrl(project.imageUrl)}
+              src={optimizeCloudinaryImage(project.imageUrl, 800)}
               alt={project.title}
               loading="lazy"
               decoding="async"
