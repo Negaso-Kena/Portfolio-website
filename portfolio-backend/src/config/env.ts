@@ -5,7 +5,7 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   PORT: z.string().default("5000"),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
-  CLIENT_URL: z.string().default("http://localhost:5173"),
+  CLIENT_URL: z.string().default("https://negaso-kena.netlify.app"),
   JWT_SECRET: z.string().min(10, "JWT_SECRET must be set to a long random string"),
   JWT_EXPIRES_IN: z.string().default("7d"),
 
@@ -20,6 +20,11 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional().default(""),
   SMTP_PASS: z.string().optional().default(""),
 
+
+  // Cloudinary file storage
+CLOUDINARY_CLOUD_NAME: z.string().optional().default(""),
+CLOUDINARY_API_KEY: z.string().optional().default(""),
+CLOUDINARY_API_SECRET: z.string().optional().default(""),
   MAX_UPLOAD_MB: z.string().default("5"),
 });
 

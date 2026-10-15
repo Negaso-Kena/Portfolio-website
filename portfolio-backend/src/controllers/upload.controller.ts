@@ -1,64 +1,109 @@
+
 import { Request, Response } from "express";
 import path from "path";
-import fs from "fs/promises";
+import { v2 as cloudinary } from "cloudinary";
 import sharp from "sharp";
+import { env } from "../config/env";
 import { ApiError } from "../utils/ApiError";
 import { asyncHandler } from "../utils/asyncHandler";
-import { uploadDir } from "../middleware/upload";
 
-// Images are never stored at their original resolution/format — profile
-// photos and project screenshots are frequently multi-megabyte camera or
-// screenshot output, which is wasted bandwidth for a portfolio site.
-// Re-encoding to WebP typically cuts file size dramatically versus the
-// source JPEG/PNG at an equivalent, still-sharp quality setting.
-const MAX_DIMENSION = 1920; // px, longest side — plenty for any layout this site uses
+// Keep image optimization before uploading to reduce bandwidth and storage.
+const MAX_DIMENSION = 1920;
 const WEBP_QUALITY = 82;
 
 const sanitizeBaseName = (originalname: string) => {
   const ext = path.extname(originalname);
-  return path.basename(originalname, ext).replace(/[^a-zA-Z0-9-_]/g, "-") || "file";
+  return (
+    path.basename(originalname, ext).replace(/[^a-zA-Z0-9-_]/g, "-") ||
+    "file"
+  );
 };
 
-// POST /api/admin/upload  (admin) — expects a single "file" field via multer
+const configureCloudinary = () => {
+  const { CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET } =
+    env;
+
+  if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) {
+    throw new Error("Cloudinary is not configured. Check the server environment variables.");
+  }
+
+  cloudinary.config({
+    cloud_name: CLOUDINARY_CLOUD_NAME,
+    api_key: CLOUDINARY_API_KEY,
+    api_secret: CLOUDINARY_API_SECRET,
+    secure: true,
+  });
+};
+
+// POST /api/admin/upload (admin) — expects one "file" field via multer.
 export const uploadFile = asyncHandler(async (req: Request, res: Response) => {
   if (!req.file) throw ApiError.badRequest("No file uploaded");
+
+  configureCloudinary();
 
   const base = sanitizeBaseName(req.file.originalname);
   const isImage = req.file.mimetype.startsWith("image/");
 
+  let buffer: Buffer;
   let filename: string;
   let mimetype: string;
-  let size: number;
+  let resourceType: "image" | "raw";
 
   if (isImage) {
-    filename = `${base}-${Date.now()}.webp`;
-    const outputPath = path.join(uploadDir, filename);
-
-    const optimized = await sharp(req.file.buffer)
-      .rotate() // respect EXIF orientation before stripping metadata
-      .resize({ width: MAX_DIMENSION, height: MAX_DIMENSION, fit: "inside", withoutEnlargement: true })
+    buffer = await sharp(req.file.buffer)
+      .rotate()
+      .resize({
+        width: MAX_DIMENSION,
+        height: MAX_DIMENSION,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
       .webp({ quality: WEBP_QUALITY })
       .toBuffer();
 
-    await fs.writeFile(outputPath, optimized);
+    filename = `${base}-${Date.now()}.webp`;
     mimetype = "image/webp";
-    size = optimized.length;
+    resourceType = "image";
   } else {
-    // Non-image (PDF, e.g. a resume) — store as-is, no re-encoding to do.
-    const ext = path.extname(req.file.originalname) || "";
-    filename = `${base}-${Date.now()}${ext}`;
-    await fs.writeFile(path.join(uploadDir, filename), req.file.buffer);
+    // PDFs are uploaded unchanged.
+    buffer = req.file.buffer;
+    filename = `${base}-${Date.now()}${path.extname(req.file.originalname) || ".pdf"}`;
     mimetype = req.file.mimetype;
-    size = req.file.buffer.length;
+    resourceType = "raw";
   }
+
+  const result = await new Promise<{
+    secure_url: string;
+    public_id: string;
+  }>((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: resourceType,
+        public_id: resourceType === "raw"
+          ? `portfolio/resumes/${filename}`
+          : `portfolio/images/${path.parse(filename).name}`,
+        overwrite: false,
+      },
+      (error, uploaded) => {
+        if (error) return reject(error);
+        if (!uploaded) return reject(new Error("Cloudinary returned no upload result"));
+        resolve({
+          secure_url: uploaded.secure_url,
+          public_id: uploaded.public_id,
+        });
+      },
+    );
+
+    stream.end(buffer);
+  });
 
   res.status(201).json({
     success: true,
     data: {
       filename,
-      url: `/uploads/${filename}`,
+      url: result.secure_url,
       mimetype,
-      size,
+      size: buffer.length,
     },
   });
 });
